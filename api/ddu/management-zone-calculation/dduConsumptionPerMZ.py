@@ -1,8 +1,11 @@
 import sys, requests, json, time
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
 METRIC_NAME = "builtin:billing.ddu.metrics.byEntity"
 PAGE_SIZE = 500
 sys.tracebacklimit = 0
+
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 # python .\dduConsumptionPerMZ.py 2020-08-01T12:00:00+02:00 2020-08-10T12:00:00+02:00 https://mySampleEnv.live.dynatrace.com/api/ abcdefghijklmnop 60
 # python .\dduConsumptionPerMZ.py 2020-08-01T12:00:00+02:00 2020-08-10T12:00:00+02:00 https://mySampleEnv.live.dynatrace.com/api/ abcdefghijklmnop 60 MyManagementZone
@@ -30,16 +33,36 @@ else:
 
 # Get all available management zones
 # https://mySampleEnv.live.dynatrace.com/api/config/v1/managementZones
+# https://mySampleEnv.live.dynatrace.com/api/v2/settings/objects?schemaIds=builtin%3Amanagement-zones&fields=objectId%2Cvalue
 # try:
 response = requests.get(
-    BASE_URL + "config/v1/managementZones",
-    headers={"Authorization": "Api-Token " + API_TOKEN},
+    BASE_URL + "v2/settings/objects?schemaIds=builtin%3Amanagement-zones&fields=objectId%2Cvalue",
+    headers={"Authorization": "Api-Token " + API_TOKEN}, 
+    verify=False,
 )
 # Show error message when a connection can’t be established. Terminates the script when there’s an error.
 response.raise_for_status()
 
-allManagemementZones = json.loads(response.content)["values"]
+# Reduce json to only management zones
+
+allManagemementZones = json.loads(response.content)["items"]
 # print("Amount of different management zones: ", len(allManagemementZones))
+# print(allManagemementZones)
+# Recreate a simpler version of the old v1 managenent zone api output
+oldJson = []
+i = 0
+
+for value in allManagemementZones:
+    #print(value["value"]["name"])
+    
+    oldJson.append({
+        "objectId":value["objectId"],
+        "name":value["value"]["name"],
+        "description":"blank"
+    })
+
+allManagemementZones = oldJson
+
 
 # If the management zone is specified: Get the index of the occurrence
 if SELECTED_MANAGEMENT_ZONE_NAME != None:
@@ -51,7 +74,7 @@ if SELECTED_MANAGEMENT_ZONE_NAME != None:
 # https://mySampleEnv.live.dynatrace.com/api/v2/entityTypes
 # https://mySampleEnv.live.dynatrace.com/api/v2/entityTypes?nextPageKey=AQAAADIBAAAAMg==
 response = requests.get(
-    BASE_URL + "v2/entityTypes", headers={"Authorization": "Api-Token " + API_TOKEN}
+    BASE_URL + "v2/entityTypes", headers={"Authorization": "Api-Token " + API_TOKEN}, verify=False,
 )
 response.raise_for_status()
 allEntityTypes = json.loads(response.content)["types"]
@@ -61,6 +84,7 @@ while nextPage != None:
     response = requests.get(
         BASE_URL + "v2/entityTypes?nextPageKey=" + nextPage,
         headers={"Authorization": "Api-Token " + API_TOKEN},
+        verify=False
     )
     response.raise_for_status()
     nextPage = (json.loads(response.content)).get("nextPageKey", None)
@@ -89,36 +113,40 @@ for managementZoneIndex, managementZone in (
         managementZoneIndex = SELECTED_MANAGEMENT_ZONE_INDEX
 
     for entityTypeIndex, entityType in enumerate(allEntityTypes):
-        """
+        
         print(
             "MZId: {:21} MZName: {:20} ET Name: {:5}".format(
-                allManagemementZones[managementZoneIndex]["id"],
+                allManagemementZones[managementZoneIndex]["objectId"],
                 allManagemementZones[managementZoneIndex]["name"],
                 allEntityTypes[entityTypeIndex]["type"],
             )
         )
-        """
+        
+        # "{}v2/metrics/query?metricSelector={}:splitBy()&mzSelector=mzName({}),type({})&pageSize={}&from={}&to={}"
+
         # Replace the "+" of Timezone to the encoded %2B
         response = requests.get(
-            "{}v2/metrics/query?metricSelector={}:splitBy()&entitySelector=mzId({}),type({})&pageSize={}&from={}&to={}".format(
+            "{}v2/metrics/query?metricSelector={}:splitBy()&mzSelector=mzName({})".format(
                 BASE_URL,
                 METRIC_NAME,
-                allManagemementZones[managementZoneIndex]["id"],
-                allEntityTypes[entityTypeIndex]["type"],
+                allManagemementZones[managementZoneIndex]["name"],
+                #allEntityTypes[entityTypeIndex]["type"],
                 str(PAGE_SIZE),
-                FROM.replace("+", "%2B", 1),
-                TO.replace("+", "%2B", 1),
+                #FROM.replace("+", "%2B", 1),
+                #TO.replace("+", "%2B", 1),
             ),
             headers={"Authorization": "Api-Token " + API_TOKEN},
+            verify=False
         )
         if response.status_code == 400 and "not applicable for type" in response.text:
             continue
         if response.status_code == 503:
             print(f"Encountered 503 for "
-                  f"{allManagemementZones[managementZoneIndex]['id']} - {allEntityTypes[entityTypeIndex]['type']} "
+                  f"{allManagemementZones[managementZoneIndex]['objectId']} - {allEntityTypes[entityTypeIndex]['type']} "
                   f"result will be incomplete.")
             continue
         response.raise_for_status()
+
         # print("Waiting for ", 60 / MAX_REQUESTS_PER_MINUTE, " seconds")
         time.sleep(60 / MAX_REQUESTS_PER_MINUTE)
         dduConsumptionOfMZandETDict = json.loads(response.content)["result"][0]["data"]
@@ -151,9 +179,11 @@ for managementZoneIndex, managementZone in (
     # print()
 
     # Populate JSON Object
+    '''
     dduConsumptionObjectOfManagementZone["MZId"] = allManagemementZones[
         managementZoneIndex
-    ]["id"]
+    ]["objectId"]
+    '''
     dduConsumptionObjectOfManagementZone["MZName"] = allManagemementZones[
         managementZoneIndex
     ]["name"]
