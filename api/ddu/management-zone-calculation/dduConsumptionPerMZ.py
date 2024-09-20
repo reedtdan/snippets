@@ -52,8 +52,9 @@ allManagemementZones = json.loads(response.content)["items"]
 oldJson = []
 i = 0
 
+
+
 for value in allManagemementZones:
-    #print(value["value"]["name"])
     
     oldJson.append({
         "objectId":value["objectId"],
@@ -62,7 +63,6 @@ for value in allManagemementZones:
     })
 
 allManagemementZones = oldJson
-
 
 # If the management zone is specified: Get the index of the occurrence
 if SELECTED_MANAGEMENT_ZONE_NAME != None:
@@ -124,12 +124,13 @@ for managementZoneIndex, managementZone in (
         
         # "{}v2/metrics/query?metricSelector={}:splitBy()&mzSelector=mzName({}),type({})&pageSize={}&from={}&to={}"
 
+
         # Replace the "+" of Timezone to the encoded %2B
         response = requests.get(
             "{}v2/metrics/query?metricSelector={}:splitBy()&mzSelector=mzName({})".format(
                 BASE_URL,
                 METRIC_NAME,
-                allManagemementZones[managementZoneIndex]["name"],
+                str(allManagemementZones[managementZoneIndex]["name"]),
                 #allEntityTypes[entityTypeIndex]["type"],
                 str(PAGE_SIZE),
                 #FROM.replace("+", "%2B", 1),
@@ -145,7 +146,9 @@ for managementZoneIndex, managementZone in (
                   f"{allManagemementZones[managementZoneIndex]['objectId']} - {allEntityTypes[entityTypeIndex]['type']} "
                   f"result will be incomplete.")
             continue
+        #print(response.content)
         response.raise_for_status()
+        
 
         # print("Waiting for ", 60 / MAX_REQUESTS_PER_MINUTE, " seconds")
         time.sleep(60 / MAX_REQUESTS_PER_MINUTE)
@@ -179,11 +182,11 @@ for managementZoneIndex, managementZone in (
     # print()
 
     # Populate JSON Object
-    '''
-    dduConsumptionObjectOfManagementZone["MZId"] = allManagemementZones[
-        managementZoneIndex
-    ]["objectId"]
-    '''
+
+    #dduConsumptionObjectOfManagementZone["MZId"] = allManagemementZones[
+        #managementZoneIndex
+    #]["objectId"]
+
     dduConsumptionObjectOfManagementZone["MZName"] = allManagemementZones[
         managementZoneIndex
     ]["name"]
